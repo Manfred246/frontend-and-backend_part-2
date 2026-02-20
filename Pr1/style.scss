@@ -1,0 +1,58 @@
+$primary-color: #3498db;
+$text-dark: #2c3e50;
+$border-radius-default: 8px;
+
+@mixin hover-lift {
+    transition: all 0.3s ease;
+
+    &:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+}
+
+.product-card {    
+    max-width: 300px;
+    border: 1px solid #eee;
+    border-radius: $border-radius-default;
+    padding: 16px;
+    font-family: sans-serif;
+    background-color: #fff;
+        
+    @include hover-lift;
+        
+    &__image {
+        width: 100%;
+        height: auto;
+        border-radius: $border-radius-default;
+        margin-bottom: 12px;
+    }
+    
+    &__title {
+        font-size: 1.4rem;
+        color: $text-dark;
+        margin: 0 0 8px 0;
+    }
+    
+    &__description {
+        font-size: 0.95rem;
+        color: #7f8c8d;
+        line-height: 1.5;
+        margin-bottom: 16px;
+    }
+    
+    &__button {
+        background-color: $primary-color; 
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: $border-radius-default; 
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+                
+        &:hover {
+            background-color: darken($primary-color, 10%);
+        }
+    }
+}
