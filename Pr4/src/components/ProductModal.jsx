@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 export default function ProductModal({ open, mode, initialProduct, onClose, onSubmit }) {
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
     category: '',
     description: '',
     price: '',
@@ -13,7 +13,7 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
 
   const categories = [
     'Ноутбуки',
-    'Смартфоны', 
+    'Смартфоны',
     'Планшеты',
     'Мониторы',
     'Комплектующие',
@@ -21,11 +21,11 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
     'Оргтехника',
     'Сетевое оборудование'
   ];
-  
+
   useEffect(() => {
     if (open) {
       setFormData({
-        name: initialProduct?.name || '',
+        title: initialProduct?.title || '',
         category: initialProduct?.category || categories[0],
         description: initialProduct?.description || '',
         price: initialProduct?.price?.toString() || '',
@@ -35,56 +35,53 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
       });
     }
   }, [open, initialProduct]);
-  
+
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
-  
+
   if (!open) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    if (!formData.name.trim()) {
+
+    if (!formData.title.trim()) {
       alert('Введите название товара');
       return;
     }
-    
+
     if (!formData.category) {
       alert('Выберите категорию');
       return;
     }
-    
+
     if (!formData.description.trim()) {
       alert('Введите описание товара');
       return;
     }
-    
+
     const priceNum = Number(formData.price);
     if (isNaN(priceNum) || priceNum <= 0) {
-      alert('Введите корректную цену (больше 0)');
+      alert('Введите корректную цену');
       return;
     }
-    
+
     const stockNum = Number(formData.stock);
     if (isNaN(stockNum) || stockNum < 0) {
-      alert('Введите корректное количество (0 или больше)');
+      alert('Введите корректное количество');
       return;
     }
-    
+
     const ratingNum = formData.rating ? Number(formData.rating) : null;
-    if (ratingNum && (ratingNum < 0 || ratingNum > 5)) {
+    if (ratingNum !== null && (ratingNum < 0 || ratingNum > 5)) {
       alert('Рейтинг должен быть от 0 до 5');
       return;
     }
 
     onSubmit({
       id: initialProduct?.id,
-      name: formData.name.trim(),
+      title: formData.title.trim(),
       category: formData.category,
       description: formData.description.trim(),
       price: priceNum,
@@ -109,9 +106,9 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
             Название товара *
             <input
               type="text"
-              name="name"
+              name="title"
               className="input"
-              value={formData.name}
+              value={formData.title}
               onChange={handleChange}
               placeholder="Например, Ноутбук Asus ROG"
               autoFocus
@@ -129,7 +126,7 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
               required
             >
               <option value="">Выберите категорию</option>
-              {categories.map(cat => (
+              {categories.map((cat) => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -156,25 +153,22 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
                 className="input"
                 value={formData.price}
                 onChange={handleChange}
-                placeholder="1000"
-                min="0"
+                min="1"
                 step="1"
                 required
               />
             </label>
 
             <label className="label">
-              На складе (шт.) *
+              На складе (шт.)
               <input
                 type="number"
                 name="stock"
                 className="input"
                 value={formData.stock}
                 onChange={handleChange}
-                placeholder="10"
                 min="0"
                 step="1"
-                required
               />
             </label>
           </div>
@@ -188,7 +182,6 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
                 className="input"
                 value={formData.rating}
                 onChange={handleChange}
-                placeholder="4.5"
                 min="0"
                 max="5"
                 step="0.1"
