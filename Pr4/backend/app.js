@@ -9,11 +9,15 @@ import swaggerUi from 'swagger-ui-express';
 const app = express();
 const port = 3000;
 
-const JWT_SECRET = 'access_secret';
-const ACCESS_EXPIRES_IN = '15s';
+const ACCESS_SECRET = 'access_secret';
+const REFRESH_SECRET = 'refresh_secret';
+
+const ACCESS_EXPIRES_IN = '15s'; // для демонстрации на защите
+const REFRESH_EXPIRES_IN = '7d';
 const SALT_ROUNDS = 10;
 
 let users = [];
+let refreshTokens = new Set();
 
 let products = [
   {
@@ -45,41 +49,11 @@ let products = [
     stock: 12,
     rating: 4.7,
     image: 'https://basket-16.wbbasket.ru/vol2539/part253983/253983234/images/big/1.webp'
-  },
-  {
-    id: nanoid(6),
-    title: 'Sony WH-1000XM5',
-    category: 'Аксессуары',
-    description: 'Наушники с шумоподавлением',
-    price: 29990,
-    stock: 15,
-    rating: 4.9,
-    image: 'https://www.central.co.th/_next/image?url=https%3A%2F%2Fassets.central.co.th%2Ffile-assets%2FCDSPIM%2Fweb%2FImage%2FMKP1527%2FSONY-WH1000XM5OVEREARWIRELESSBLUETOOTHHEADPHONESILVER-MKP1527068-1.webp&w=640&q=75'
-  },
-  {
-    id: nanoid(6),
-    title: 'LG UltraGear 27"',
-    category: 'Мониторы',
-    description: '144Hz игровой монитор',
-    price: 39990,
-    stock: 7,
-    rating: 4.6,
-    image: 'https://avatars.mds.yandex.net/get-mpic/17405852/2a00000198b4d418e3db20529fb7b2059467/orig'
   }
 ];
 
 app.use(express.json());
 app.use(cors({ origin: 'http://localhost:3001' }));
-
-app.use((req, res, next) => {
-  res.on('finish', () => {
-    console.log(`[${new Date().toISOString()}] [${req.method}] ${res.statusCode} ${req.path}`);
-    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-      console.log('Body:', req.body);
-    }
-  });
-  next();
-});
 
 function sanitizeUser(user) {
   return {
@@ -94,6 +68,30 @@ function findUserByEmail(email) {
   return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
 }
 
+function generateAccessToken(user) {
+  return jwt.sign(
+    {
+      sub: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name
+    },
+    ACCESS_SECRET,
+    { expiresIn: ACCESS_EXPIRES_IN }
+  );
+}
+
+function generateRefreshToken(user) {
+  return jwt.sign(
+    {
+      sub: user.id,
+      email: user.email
+    },
+    REFRESH_SECRET,
+    { expiresIn: REFRESH_EXPIRES_IN }
+  );
+}
+
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const [scheme, token] = header.split(' ');
@@ -105,7 +103,7 @@ function authMiddleware(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, ACCESS_SECRET);
     req.user = payload;
     next();
   } catch {
@@ -166,12 +164,8 @@ const swaggerOptions = {
     openapi: '3.0.0',
     info: {
       title: 'API интернет-магазина TechStore',
-      version: '2.0.0',
-      description: 'API для авторизации пользователей и управления товарами',
-      contact: {
-        name: 'TechStore Support',
-        email: 'support@techstore.com'
-      }
+      version: '4.0.0',
+      description: 'API с access и refresh токенами'
     },
     servers: [
       {
@@ -198,6 +192,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: t
  *       type: http
  *       scheme: bearer
  *       bearerFormat: JWT
+ *     refreshHeader:
+ *       type: apiKey
+ *       in: header
+ *       name: x-refresh-token
  *   schemas:
  *     UserRegisterRequest:
  *       type: object
@@ -236,24 +234,28 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: t
  *       properties:
  *         id:
  *           type: string
- *           example: "abc123"
  *         email:
  *           type: string
- *           example: "ivan@example.com"
  *         first_name:
  *           type: string
- *           example: "Иван"
  *         last_name:
  *           type: string
- *           example: "Иванов"
  *     LoginResponse:
  *       type: object
  *       properties:
  *         accessToken:
  *           type: string
- *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *         refreshToken:
+ *           type: string
  *         user:
  *           $ref: '#/components/schemas/UserResponse'
+ *     RefreshResponse:
+ *       type: object
+ *       properties:
+ *         accessToken:
+ *           type: string
+ *         refreshToken:
+ *           type: string
  *     Product:
  *       type: object
  *       required:
@@ -264,34 +266,25 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: t
  *       properties:
  *         id:
  *           type: string
- *           example: "abc123"
  *         title:
  *           type: string
- *           example: "Ноутбук Asus ROG Strix"
  *         category:
  *           type: string
- *           example: "Ноутбуки"
  *         description:
  *           type: string
- *           example: "Игровой ноутбук с RTX 3060, 16GB RAM, 512GB SSD"
  *         price:
  *           type: number
- *           example: 129990
  *         stock:
  *           type: integer
- *           example: 5
  *         rating:
  *           type: number
- *           example: 4.8
  *         image:
  *           type: string
- *           example: "https://via.placeholder.com/300"
  *     Error:
  *       type: object
  *       properties:
  *         error:
  *           type: string
- *           example: "Invalid or expired token"
  */
 
 /**
@@ -300,19 +293,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: t
  *   post:
  *     summary: Регистрация пользователя
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UserRegisterRequest'
- *     responses:
- *       201:
- *         description: Пользователь успешно зарегистрирован
- *       400:
- *         description: Ошибка валидации
- *       409:
- *         description: Пользователь уже существует
  */
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -322,8 +302,8 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const { email, first_name, last_name, password } = req.body;
-
     const existingUser = findUserByEmail(email);
+
     if (existingUser) {
       return res.status(409).json({
         error: 'Пользователь с таким email уже существует'
@@ -352,25 +332,11 @@ app.post('/api/auth/register', async (req, res) => {
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Вход в систему и получение JWT
+ *     summary: Вход в систему и получение пары токенов
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UserLoginRequest'
  *     responses:
  *       200:
  *         description: Успешный вход
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/LoginResponse'
- *       400:
- *         description: Отсутствуют обязательные поля
- *       401:
- *         description: Неверные учетные данные
  */
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -396,19 +362,14 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    const accessToken = jwt.sign(
-      {
-        sub: user.id,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name
-      },
-      JWT_SECRET,
-      { expiresIn: ACCESS_EXPIRES_IN }
-    );
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    refreshTokens.add(refreshToken);
 
     return res.json({
       accessToken,
+      refreshToken,
       user: sanitizeUser(user)
     });
   } catch {
@@ -418,28 +379,99 @@ app.post('/api/auth/login', async (req, res) => {
 
 /**
  * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Обновить пару токенов по refresh-токену из заголовка
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: header
+ *         name: x-refresh-token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Refresh token
+ *     responses:
+ *       200:
+ *         description: Новая пара токенов
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/RefreshResponse'
+ */
+app.post('/api/auth/refresh', (req, res) => {
+  const refreshToken = req.headers['x-refresh-token'];
+
+  if (!refreshToken) {
+    return res.status(400).json({
+      error: 'refreshToken header is required'
+    });
+  }
+
+  if (!refreshTokens.has(refreshToken)) {
+    return res.status(401).json({
+      error: 'Invalid refresh token'
+    });
+  }
+
+  try {
+    const payload = jwt.verify(refreshToken, REFRESH_SECRET);
+    const user = users.find((u) => u.id === payload.sub);
+
+    if (!user) {
+      return res.status(401).json({
+        error: 'User not found'
+      });
+    }
+
+    refreshTokens.delete(refreshToken);
+
+    const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    refreshTokens.add(newRefreshToken);
+
+    return res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken
+    });
+  } catch {
+    return res.status(401).json({
+      error: 'Invalid or expired refresh token'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Выход из системы
+ *     tags: [Auth]
+ */
+app.post('/api/auth/logout', (req, res) => {
+  const refreshToken = req.headers['x-refresh-token'];
+
+  if (refreshToken) {
+    refreshTokens.delete(refreshToken);
+  }
+
+  return res.json({ logout: true });
+});
+
+/**
+ * @swagger
  * /api/auth/me:
  *   get:
- *     summary: Получить текущего авторизованного пользователя
+ *     summary: Получить текущего пользователя
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Данные текущего пользователя
- *       401:
- *         description: Токен отсутствует или недействителен
- *       404:
- *         description: Пользователь не найден
  */
 app.get('/api/auth/me', authMiddleware, (req, res) => {
-  const userId = req.user.sub;
-  const user = users.find((u) => u.id === userId);
+  const user = users.find((u) => u.id === req.user.sub);
 
   if (!user) {
-    return res.status(404).json({
-      error: 'User not found'
-    });
+    return res.status(404).json({ error: 'User not found' });
   }
 
   return res.json(sanitizeUser(user));
@@ -449,11 +481,8 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
  * @swagger
  * /api/products:
  *   get:
- *     summary: Получить список всех товаров
+ *     summary: Получить список товаров
  *     tags: [Products]
- *     responses:
- *       200:
- *         description: Успешный запрос
  */
 app.get('/api/products', (req, res) => {
   res.json(products);
@@ -467,19 +496,6 @@ app.get('/api/products', (req, res) => {
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Товар найден
- *       401:
- *         description: Не авторизован
- *       404:
- *         description: Товар не найден
  */
 app.get('/api/products/:id', authMiddleware, (req, res) => {
   const product = products.find((p) => p.id === req.params.id);
@@ -495,19 +511,8 @@ app.get('/api/products/:id', authMiddleware, (req, res) => {
  * @swagger
  * /api/products:
  *   post:
- *     summary: Создать новый товар
+ *     summary: Создать товар
  *     tags: [Products]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Product'
- *     responses:
- *       201:
- *         description: Товар создан
- *       400:
- *         description: Ошибка валидации
  */
 app.post('/api/products', (req, res) => {
   const validationError = validateProductBody(req.body);
@@ -541,25 +546,6 @@ app.post('/api/products', (req, res) => {
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Product'
- *     responses:
- *       200:
- *         description: Товар обновлен
- *       401:
- *         description: Не авторизован
- *       404:
- *         description: Товар не найден
  */
 app.put('/api/products/:id', authMiddleware, (req, res) => {
   const product = products.find((p) => p.id === req.params.id);
@@ -595,19 +581,6 @@ app.put('/api/products/:id', authMiddleware, (req, res) => {
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       204:
- *         description: Товар удален
- *       401:
- *         description: Не авторизован
- *       404:
- *         description: Товар не найден
  */
 app.delete('/api/products/:id', authMiddleware, (req, res) => {
   const index = products.findIndex((p) => p.id === req.params.id);

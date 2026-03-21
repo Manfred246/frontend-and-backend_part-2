@@ -42,7 +42,7 @@ export default function ProductsPage() {
           setProducts(data);
         }
 
-        const token = authStorage.getToken();
+        const token = authStorage.getAccessToken();
         if (token) {
           try {
             const me = await api.getMe();
@@ -51,7 +51,7 @@ export default function ProductsPage() {
               localStorage.setItem(USER_KEY, JSON.stringify(me));
             }
           } catch {
-            authStorage.removeToken();
+            authStorage.clear();
             localStorage.removeItem(USER_KEY);
             if (isMounted) {
               setCurrentUser(null);
@@ -95,16 +95,22 @@ export default function ProductsPage() {
     }
   }, [isAnyModalOpen]);
 
-  const saveAuth = useCallback((user, token) => {
+  const saveAuth = useCallback((user, accessToken, refreshToken) => {
     setCurrentUser(user);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
-    authStorage.setToken(token);
+    authStorage.setAccessToken(accessToken);
+    authStorage.setRefreshToken(refreshToken);
   }, []);
 
-  const clearAuth = useCallback(() => {
-    setCurrentUser(null);
-    localStorage.removeItem(USER_KEY);
-    authStorage.removeToken();
+  const clearAuth = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch {
+      authStorage.clear();
+    } finally {
+      setCurrentUser(null);
+      localStorage.removeItem(USER_KEY);
+    }
   }, []);
 
   const openCreate = useCallback(() => {
@@ -144,8 +150,8 @@ export default function ProductsPage() {
     setAuthOpen(false);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    clearAuth();
+  const handleLogout = useCallback(async () => {
+    await clearAuth();
     alert('Вы вышли из аккаунта');
   }, [clearAuth]);
 
@@ -160,7 +166,12 @@ export default function ProductsPage() {
         password: payload.password
       });
 
-      saveAuth(loginResult.user, loginResult.accessToken);
+      saveAuth(
+        loginResult.user,
+        loginResult.accessToken,
+        loginResult.refreshToken
+      );
+
       setAuthOpen(false);
       alert(`Добро пожаловать, ${loginResult.user.first_name}!`);
     } catch (err) {
@@ -176,7 +187,8 @@ export default function ProductsPage() {
       setAuthLoading(true);
 
       const result = await api.login(payload);
-      saveAuth(result.user, result.accessToken);
+
+      saveAuth(result.user, result.accessToken, result.refreshToken);
 
       setAuthOpen(false);
       alert(`Здравствуйте, ${result.user.first_name}!`);
@@ -203,14 +215,9 @@ export default function ProductsPage() {
       setProducts((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       console.error('Ошибка удаления:', err);
-
-      if (err?.response?.status === 401) {
-        clearAuth();
-      }
-
       alert(err?.response?.data?.error || 'Ошибка удаления товара');
     }
-  }, [currentUser, clearAuth]);
+  }, [currentUser]);
 
   const handleSubmitModal = useCallback(async (payload) => {
     try {
@@ -227,14 +234,9 @@ export default function ProductsPage() {
       closeModal();
     } catch (err) {
       console.error('Ошибка сохранения:', err);
-
-      if (err?.response?.status === 401) {
-        clearAuth();
-      }
-
       alert(err?.response?.data?.error || 'Ошибка сохранения товара');
     }
-  }, [modalMode, closeModal, clearAuth]);
+  }, [modalMode, closeModal]);
 
   return (
     <div className="page">
