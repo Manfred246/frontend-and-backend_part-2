@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const ACCESS_TOKEN_KEY = 'techstore_access_token';
-const REFRESH_TOKEN_KEY = 'techstore_refresh_token';
+const ACCESS_TOKEN_KEY = 'accessToken';
+const REFRESH_TOKEN_KEY = 'refreshToken';
 
 const apiClient = axios.create({
   baseURL: 'http://localhost:3000/api',
@@ -11,65 +11,88 @@ const apiClient = axios.create({
   }
 });
 
-export const authStorage = {
-  getAccessToken: () => localStorage.getItem(ACCESS_TOKEN_KEY),
-  setAccessToken: (token) => localStorage.setItem(ACCESS_TOKEN_KEY, token),
-  removeAccessToken: () => localStorage.removeItem(ACCESS_TOKEN_KEY),
+export const tokenStorage = {
+  getAccessToken() {
+    return localStorage.getItem(ACCESS_TOKEN_KEY);
+  },
+  setAccessToken(token) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  },
+  removeAccessToken() {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+  },
 
-  getRefreshToken: () => localStorage.getItem(REFRESH_TOKEN_KEY),
-  setRefreshToken: (token) => localStorage.setItem(REFRESH_TOKEN_KEY, token),
-  removeRefreshToken: () => localStorage.removeItem(REFRESH_TOKEN_KEY),
+  getRefreshToken() {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  },
+  setRefreshToken(token) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  },
+  removeRefreshToken() {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
 
-  clear: () => {
+  clear() {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
   }
 };
 
-apiClient.interceptors.request.use((config) => {
-  const token = authStorage.getAccessToken();
+apiClient.interceptors.request.use(
+  (config) => {
+    const accessToken = tokenStorage.getAccessToken();
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
 
-  return config;
-});
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 let isRefreshing = false;
-let failedQueue = [];
+let pendingRequests = [];
 
-function processQueue(error, token = null) {
-  failedQueue.forEach((promise) => {
+function resolvePendingRequests(error, newToken = null) {
+  pendingRequests.forEach(({ resolve, reject }) => {
     if (error) {
-      promise.reject(error);
+      reject(error);
     } else {
-      promise.resolve(token);
+      resolve(newToken);
     }
   });
 
-  failedQueue = [];
+  pendingRequests = [];
 }
 
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const accessToken = tokenStorage.getAccessToken();
+    const refreshToken = tokenStorage.getRefreshToken();
 
     if (
       error.response?.status === 401 &&
-      !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/login') &&
-      !originalRequest.url?.includes('/auth/refresh')
+      !originalRequest?._retry &&
+      !originalRequest?.url?.includes('/auth/login') &&
+      !originalRequest?.url?.includes('/auth/register') &&
+      !originalRequest?.url?.includes('/auth/refresh')
     ) {
       originalRequest._retry = true;
 
+      if (!accessToken || !refreshToken) {
+        tokenStorage.clear();
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
+          pendingRequests.push({ resolve, reject });
         })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+          .then((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
             return apiClient(originalRequest);
           })
           .catch((err) => Promise.reject(err));
@@ -78,13 +101,6 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = authStorage.getRefreshToken();
-
-        if (!refreshToken) {
-          authStorage.clear();
-          return Promise.reject(error);
-        }
-
         const response = await axios.post(
           'http://localhost:3000/api/auth/refresh',
           {},
@@ -95,19 +111,19 @@ apiClient.interceptors.response.use(
           }
         );
 
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        const newAccessToken = response.data.accessToken;
+        const newRefreshToken = response.data.refreshToken;
 
-        authStorage.setAccessToken(accessToken);
-        authStorage.setRefreshToken(newRefreshToken);
+        tokenStorage.setAccessToken(newAccessToken);
+        tokenStorage.setRefreshToken(newRefreshToken);
 
-        apiClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-        processQueue(null, accessToken);
+        resolvePendingRequests(null, newAccessToken);
 
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        authStorage.clear();
+        tokenStorage.clear();
+        resolvePendingRequests(refreshError, null);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -119,6 +135,37 @@ apiClient.interceptors.response.use(
 );
 
 export const api = {
+  register: async (payload) => {
+    const response = await apiClient.post('/auth/register', payload);
+    return response.data;
+  },
+
+  login: async (payload) => {
+    const response = await apiClient.post('/auth/login', payload);
+    return response.data;
+  },
+
+  refresh: async () => {
+    const refreshToken = tokenStorage.getRefreshToken();
+
+    const response = await apiClient.post(
+      '/auth/refresh',
+      {},
+      {
+        headers: {
+          'x-refresh-token': refreshToken || ''
+        }
+      }
+    );
+
+    return response.data;
+  },
+
+  getMe: async () => {
+    const response = await apiClient.get('/auth/me');
+    return response.data;
+  },
+
   getProducts: async () => {
     const response = await apiClient.get('/products');
     return response.data;
@@ -129,13 +176,13 @@ export const api = {
     return response.data;
   },
 
-  createProduct: async (product) => {
-    const response = await apiClient.post('/products', product);
+  createProduct: async (payload) => {
+    const response = await apiClient.post('/products', payload);
     return response.data;
   },
 
-  updateProduct: async (id, product) => {
-    const response = await apiClient.put(`/products/${id}`, product);
+  updateProduct: async (id, payload) => {
+    const response = await apiClient.put(`/products/${id}`, payload);
     return response.data;
   },
 
@@ -144,23 +191,8 @@ export const api = {
     return response.data;
   },
 
-  register: async (user) => {
-    const response = await apiClient.post('/auth/register', user);
-    return response.data;
-  },
-
-  login: async (credentials) => {
-    const response = await apiClient.post('/auth/login', credentials);
-    return response.data;
-  },
-
-  getMe: async () => {
-    const response = await apiClient.get('/auth/me');
-    return response.data;
-  },
-
   logout: async () => {
-    const refreshToken = authStorage.getRefreshToken();
+    const refreshToken = tokenStorage.getRefreshToken();
 
     try {
       await apiClient.post(
@@ -173,7 +205,7 @@ export const api = {
         }
       );
     } finally {
-      authStorage.clear();
+      tokenStorage.clear();
     }
   }
 };
