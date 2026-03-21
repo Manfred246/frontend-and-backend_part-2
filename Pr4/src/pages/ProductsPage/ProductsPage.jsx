@@ -3,9 +3,9 @@ import './ProductsPage.scss';
 import ProductsList from '../../components/ProductsList';
 import ProductModal from '../../components/ProductModal';
 import AuthModal from '../../components/AuthModal';
-import { api } from '../../api';
+import { api, authStorage } from '../../api';
 
-const STORAGE_KEY = 'techstore_user';
+const USER_KEY = 'techstore_user';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
@@ -18,9 +18,10 @@ export default function ProductsPage() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState('login');
   const [authLoading, setAuthLoading] = useState(false);
+
   const [currentUser, setCurrentUser] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(USER_KEY);
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -32,12 +33,30 @@ export default function ProductsPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProducts = async () => {
+    const bootstrap = async () => {
       try {
         setLoading(true);
+
         const data = await api.getProducts();
         if (isMounted) {
           setProducts(data);
+        }
+
+        const token = authStorage.getToken();
+        if (token) {
+          try {
+            const me = await api.getMe();
+            if (isMounted) {
+              setCurrentUser(me);
+              localStorage.setItem(USER_KEY, JSON.stringify(me));
+            }
+          } catch {
+            authStorage.removeToken();
+            localStorage.removeItem(USER_KEY);
+            if (isMounted) {
+              setCurrentUser(null);
+            }
+          }
         }
       } catch (err) {
         console.error('Ошибка загрузки:', err);
@@ -51,7 +70,7 @@ export default function ProductsPage() {
       }
     };
 
-    loadProducts();
+    bootstrap();
 
     return () => {
       isMounted = false;
@@ -76,27 +95,23 @@ export default function ProductsPage() {
     }
   }, [isAnyModalOpen]);
 
-  const saveUser = useCallback((user) => {
+  const saveAuth = useCallback((user, token) => {
     setCurrentUser(user);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    authStorage.setToken(token);
   }, []);
 
-  const clearUser = useCallback(() => {
+  const clearAuth = useCallback(() => {
     setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(USER_KEY);
+    authStorage.removeToken();
   }, []);
 
   const openCreate = useCallback(() => {
-    if (!currentUser) {
-      setAuthMode('login');
-      setAuthOpen(true);
-      return;
-    }
-
     setModalMode('create');
     setEditingProduct(null);
     setModalOpen(true);
-  }, [currentUser]);
+  }, []);
 
   const openEdit = useCallback((product) => {
     if (!currentUser) {
@@ -130,13 +145,14 @@ export default function ProductsPage() {
   }, []);
 
   const handleLogout = useCallback(() => {
-    clearUser();
+    clearAuth();
     alert('Вы вышли из аккаунта');
-  }, [clearUser]);
+  }, [clearAuth]);
 
   const handleRegister = useCallback(async (payload) => {
     try {
       setAuthLoading(true);
+
       await api.register(payload);
 
       const loginResult = await api.login({
@@ -144,7 +160,7 @@ export default function ProductsPage() {
         password: payload.password
       });
 
-      saveUser(loginResult.user);
+      saveAuth(loginResult.user, loginResult.accessToken);
       setAuthOpen(false);
       alert(`Добро пожаловать, ${loginResult.user.first_name}!`);
     } catch (err) {
@@ -153,13 +169,15 @@ export default function ProductsPage() {
     } finally {
       setAuthLoading(false);
     }
-  }, [saveUser]);
+  }, [saveAuth]);
 
   const handleLogin = useCallback(async (payload) => {
     try {
       setAuthLoading(true);
+
       const result = await api.login(payload);
-      saveUser(result.user);
+      saveAuth(result.user, result.accessToken);
+
       setAuthOpen(false);
       alert(`Здравствуйте, ${result.user.first_name}!`);
     } catch (err) {
@@ -168,7 +186,7 @@ export default function ProductsPage() {
     } finally {
       setAuthLoading(false);
     }
-  }, [saveUser]);
+  }, [saveAuth]);
 
   const handleDelete = useCallback(async (id) => {
     if (!currentUser) {
@@ -185,9 +203,14 @@ export default function ProductsPage() {
       setProducts((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       console.error('Ошибка удаления:', err);
+
+      if (err?.response?.status === 401) {
+        clearAuth();
+      }
+
       alert(err?.response?.data?.error || 'Ошибка удаления товара');
     }
-  }, [currentUser]);
+  }, [currentUser, clearAuth]);
 
   const handleSubmitModal = useCallback(async (payload) => {
     try {
@@ -204,9 +227,14 @@ export default function ProductsPage() {
       closeModal();
     } catch (err) {
       console.error('Ошибка сохранения:', err);
+
+      if (err?.response?.status === 401) {
+        clearAuth();
+      }
+
       alert(err?.response?.data?.error || 'Ошибка сохранения товара');
     }
-  }, [modalMode, closeModal]);
+  }, [modalMode, closeModal, clearAuth]);
 
   return (
     <div className="page">
@@ -248,7 +276,7 @@ export default function ProductsPage() {
               <h1 className="title">Каталог товаров ({products.length})</h1>
               {!currentUser && (
                 <div className="toolbarHint">
-                  Для добавления, редактирования и удаления товаров войдите в аккаунт
+                  Для редактирования и удаления защищённых товаров нужна авторизация
                 </div>
               )}
             </div>

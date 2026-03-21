@@ -2,11 +2,15 @@ import express from 'express';
 import { nanoid } from 'nanoid';
 import cors from 'cors';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 
 const app = express();
 const port = 3000;
+
+const JWT_SECRET = 'access_secret';
+const ACCESS_EXPIRES_IN = '15s';
 const SALT_ROUNDS = 10;
 
 let users = [];
@@ -51,6 +55,16 @@ let products = [
     stock: 15,
     rating: 4.9,
     image: 'https://www.central.co.th/_next/image?url=https%3A%2F%2Fassets.central.co.th%2Ffile-assets%2FCDSPIM%2Fweb%2FImage%2FMKP1527%2FSONY-WH1000XM5OVEREARWIRELESSBLUETOOTHHEADPHONESILVER-MKP1527068-1.webp&w=640&q=75'
+  },
+  {
+    id: nanoid(6),
+    title: 'LG UltraGear 27"',
+    category: 'Мониторы',
+    description: '144Hz игровой монитор',
+    price: 39990,
+    stock: 7,
+    rating: 4.6,
+    image: 'https://avatars.mds.yandex.net/get-mpic/17405852/2a00000198b4d418e3db20529fb7b2059467/orig'
   }
 ];
 
@@ -59,7 +73,7 @@ app.use(cors({ origin: 'http://localhost:3001' }));
 
 app.use((req, res, next) => {
   res.on('finish', () => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} -> ${res.statusCode}`);
+    console.log(`[${new Date().toISOString()}] [${req.method}] ${res.statusCode} ${req.path}`);
     if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
       console.log('Body:', req.body);
     }
@@ -67,12 +81,92 @@ app.use((req, res, next) => {
   next();
 });
 
+function sanitizeUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    first_name: user.first_name,
+    last_name: user.last_name
+  };
+}
+
+function findUserByEmail(email) {
+  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+}
+
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  const [scheme, token] = header.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({
+      error: 'Missing or invalid Authorization header'
+    });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({
+      error: 'Invalid or expired token'
+    });
+  }
+}
+
+function validateRegisterBody(body) {
+  const { email, first_name, last_name, password } = body;
+
+  if (!email || !first_name || !last_name || !password) {
+    return 'Поля email, first_name, last_name, password обязательны';
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return 'Некорректный email';
+  }
+
+  if (String(password).length < 6) {
+    return 'Пароль должен содержать минимум 6 символов';
+  }
+
+  return null;
+}
+
+function validateProductBody(body) {
+  const { title, category, description, price, stock, rating } = body;
+
+  if (!title || !category || !description || price === undefined) {
+    return 'Поля title, category, description, price обязательны';
+  }
+
+  if (Number.isNaN(Number(price)) || Number(price) <= 0) {
+    return 'Поле price должно быть числом больше 0';
+  }
+
+  if (stock !== undefined && (!Number.isInteger(Number(stock)) || Number(stock) < 0)) {
+    return 'Поле stock должно быть целым числом 0 или больше';
+  }
+
+  if (
+    rating !== undefined &&
+    rating !== null &&
+    rating !== '' &&
+    (Number.isNaN(Number(rating)) || Number(rating) < 0 || Number(rating) > 5)
+  ) {
+    return 'Поле rating должно быть в диапазоне от 0 до 5';
+  }
+
+  return null;
+}
+
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
       title: 'API интернет-магазина TechStore',
-      version: '1.0.0',
+      version: '2.0.0',
       description: 'API для авторизации пользователей и управления товарами',
       contact: {
         name: 'TechStore Support',
@@ -96,100 +190,14 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
 
-function sanitizeUser(user) {
-  return {
-    id: user.id,
-    email: user.email,
-    first_name: user.first_name,
-    last_name: user.last_name
-  };
-}
-
-function findUserByEmail(email) {
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-}
-
-function findProductById(id) {
-  return products.find((p) => p.id === id);
-}
-
-async function hashPassword(password) {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-async function verifyPassword(password, hashedPassword) {
-  return bcrypt.compare(password, hashedPassword);
-}
-
-function validateRegisterBody(body) {
-  const { email, first_name, last_name, password } = body;
-
-  if (!email || !first_name || !last_name || !password) {
-    return 'Поля email, first_name, last_name, password обязательны';
-  }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    return 'Некорректный email';
-  }
-
-  if (String(password).length < 6) {
-    return 'Пароль должен содержать минимум 6 символов';
-  }
-
-  return null;
-}
-
-function validateProductBody(body, { partial = false } = {}) {
-  const requiredFields = ['title', 'category', 'description', 'price'];
-
-  if (!partial) {
-    for (const field of requiredFields) {
-      if (body[field] === undefined || body[field] === null || body[field] === '') {
-        return `Поле ${field} обязательно`;
-      }
-    }
-  }
-
-  if (body.title !== undefined && !String(body.title).trim()) {
-    return 'Поле title не может быть пустым';
-  }
-
-  if (body.category !== undefined && !String(body.category).trim()) {
-    return 'Поле category не может быть пустым';
-  }
-
-  if (body.description !== undefined && !String(body.description).trim()) {
-    return 'Поле description не может быть пустым';
-  }
-
-  if (body.price !== undefined) {
-    const price = Number(body.price);
-    if (Number.isNaN(price) || price <= 0) {
-      return 'Поле price должно быть числом больше 0';
-    }
-  }
-
-  if (body.stock !== undefined) {
-    const stock = Number(body.stock);
-    if (!Number.isInteger(stock) || stock < 0) {
-      return 'Поле stock должно быть целым числом 0 или больше';
-    }
-  }
-
-  if (body.rating !== undefined && body.rating !== null && body.rating !== '') {
-    const rating = Number(body.rating);
-    if (Number.isNaN(rating) || rating < 0 || rating > 5) {
-      return 'Поле rating должно быть в диапазоне от 0 до 5';
-    }
-  }
-
-  return null;
-}
-
 /**
  * @swagger
  * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
  *   schemas:
  *     UserRegisterRequest:
  *       type: object
@@ -228,7 +236,7 @@ function validateProductBody(body, { partial = false } = {}) {
  *       properties:
  *         id:
  *           type: string
- *           example: "ab12cd"
+ *           example: "abc123"
  *         email:
  *           type: string
  *           example: "ivan@example.com"
@@ -241,9 +249,9 @@ function validateProductBody(body, { partial = false } = {}) {
  *     LoginResponse:
  *       type: object
  *       properties:
- *         login:
- *           type: boolean
- *           example: true
+ *         accessToken:
+ *           type: string
+ *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
  *         user:
  *           $ref: '#/components/schemas/UserResponse'
  *     Product:
@@ -277,13 +285,13 @@ function validateProductBody(body, { partial = false } = {}) {
  *           example: 4.8
  *         image:
  *           type: string
- *           example: "https://via.placeholder.com/300x200?text=Asus+ROG"
+ *           example: "https://via.placeholder.com/300"
  *     Error:
  *       type: object
  *       properties:
  *         error:
  *           type: string
- *           example: "Product not found"
+ *           example: "Invalid or expired token"
  */
 
 /**
@@ -300,23 +308,11 @@ function validateProductBody(body, { partial = false } = {}) {
  *             $ref: '#/components/schemas/UserRegisterRequest'
  *     responses:
  *       201:
- *         description: Пользователь успешно создан
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UserResponse'
+ *         description: Пользователь успешно зарегистрирован
  *       400:
  *         description: Ошибка валидации
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  *       409:
  *         description: Пользователь уже существует
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -329,22 +325,25 @@ app.post('/api/auth/register', async (req, res) => {
 
     const existingUser = findUserByEmail(email);
     if (existingUser) {
-      return res.status(409).json({ error: 'Пользователь с таким email уже существует' });
+      return res.status(409).json({
+        error: 'Пользователь с таким email уже существует'
+      });
     }
 
-    const newUser = {
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const user = {
       id: nanoid(6),
       email: email.trim(),
       first_name: first_name.trim(),
       last_name: last_name.trim(),
-      password: await hashPassword(password)
+      passwordHash
     };
 
-    users.push(newUser);
+    users.push(user);
 
-    return res.status(201).json(sanitizeUser(newUser));
-  } catch (error) {
-    console.error(error);
+    return res.status(201).json(sanitizeUser(user));
+  } catch {
     return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 });
@@ -353,7 +352,7 @@ app.post('/api/auth/register', async (req, res) => {
  * @swagger
  * /api/auth/login:
  *   post:
- *     summary: Вход в систему
+ *     summary: Вход в систему и получение JWT
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -363,57 +362,87 @@ app.post('/api/auth/register', async (req, res) => {
  *             $ref: '#/components/schemas/UserLoginRequest'
  *     responses:
  *       200:
- *         description: Успешная авторизация
+ *         description: Успешный вход
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/LoginResponse'
  *       400:
  *         description: Отсутствуют обязательные поля
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  *       401:
- *         description: Неверный пароль
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       404:
- *         description: Пользователь не найден
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *         description: Неверные учетные данные
  */
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Поля email и password обязательны' });
+      return res.status(400).json({
+        error: 'email and password are required'
+      });
     }
 
     const user = findUserByEmail(email);
     if (!user) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
+      return res.status(401).json({
+        error: 'Invalid credentials'
+      });
     }
 
-    const isAuthenticated = await verifyPassword(password, user.password);
-
-    if (!isAuthenticated) {
-      return res.status(401).json({ error: 'Неверный пароль' });
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({
+        error: 'Invalid credentials'
+      });
     }
 
-    return res.status(200).json({
-      login: true,
+    const accessToken = jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name
+      },
+      JWT_SECRET,
+      { expiresIn: ACCESS_EXPIRES_IN }
+    );
+
+    return res.json({
+      accessToken,
       user: sanitizeUser(user)
     });
-  } catch (error) {
-    console.error(error);
+  } catch {
     return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
+});
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Получить текущего авторизованного пользователя
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Данные текущего пользователя
+ *       401:
+ *         description: Токен отсутствует или недействителен
+ *       404:
+ *         description: Пользователь не найден
+ */
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const userId = req.user.sub;
+  const user = users.find((u) => u.id === userId);
+
+  if (!user) {
+    return res.status(404).json({
+      error: 'User not found'
+    });
+  }
+
+  return res.json(sanitizeUser(user));
 });
 
 /**
@@ -424,13 +453,7 @@ app.post('/api/auth/login', async (req, res) => {
  *     tags: [Products]
  *     responses:
  *       200:
- *         description: Успешный запрос. Возвращает массив товаров.
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Product'
+ *         description: Успешный запрос
  */
 app.get('/api/products', (req, res) => {
   res.json(products);
@@ -442,29 +465,24 @@ app.get('/api/products', (req, res) => {
  *   get:
  *     summary: Получить товар по ID
  *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: ID товара
  *     responses:
  *       200:
  *         description: Товар найден
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
+ *       401:
+ *         description: Не авторизован
  *       404:
  *         description: Товар не найден
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-app.get('/api/products/:id', (req, res) => {
-  const product = findProductById(req.params.id);
+app.get('/api/products/:id', authMiddleware, (req, res) => {
+  const product = products.find((p) => p.id === req.params.id);
 
   if (!product) {
     return res.status(404).json({ error: 'Product not found' });
@@ -487,17 +505,9 @@ app.get('/api/products/:id', (req, res) => {
  *             $ref: '#/components/schemas/Product'
  *     responses:
  *       201:
- *         description: Товар успешно создан
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
+ *         description: Товар создан
  *       400:
  *         description: Ошибка валидации
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
 app.post('/api/products', (req, res) => {
   const validationError = validateProductBody(req.body);
@@ -512,29 +522,31 @@ app.post('/api/products', (req, res) => {
     description: String(req.body.description).trim(),
     price: Number(req.body.price),
     stock: req.body.stock !== undefined ? Number(req.body.stock) : 0,
-    rating: req.body.rating !== undefined && req.body.rating !== null && req.body.rating !== ''
-      ? Number(req.body.rating)
-      : null,
+    rating:
+      req.body.rating !== undefined && req.body.rating !== null && req.body.rating !== ''
+        ? Number(req.body.rating)
+        : null,
     image: req.body.image?.trim() || 'https://via.placeholder.com/300'
   };
 
   products.push(newProduct);
-  res.status(201).json(newProduct);
+  return res.status(201).json(newProduct);
 });
 
 /**
  * @swagger
  * /api/products/{id}:
  *   put:
- *     summary: Обновить параметры товара
+ *     summary: Обновить товар
  *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: ID товара
  *     requestBody:
  *       required: true
  *       content:
@@ -543,26 +555,14 @@ app.post('/api/products', (req, res) => {
  *             $ref: '#/components/schemas/Product'
  *     responses:
  *       200:
- *         description: Товар успешно обновлен
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
- *       400:
- *         description: Ошибка валидации
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *         description: Товар обновлен
+ *       401:
+ *         description: Не авторизован
  *       404:
  *         description: Товар не найден
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-app.put('/api/products/:id', (req, res) => {
-  const product = findProductById(req.params.id);
+app.put('/api/products/:id', authMiddleware, (req, res) => {
+  const product = products.find((p) => p.id === req.params.id);
 
   if (!product) {
     return res.status(404).json({ error: 'Product not found' });
@@ -578,9 +578,10 @@ app.put('/api/products/:id', (req, res) => {
   product.description = String(req.body.description).trim();
   product.price = Number(req.body.price);
   product.stock = req.body.stock !== undefined ? Number(req.body.stock) : 0;
-  product.rating = req.body.rating !== undefined && req.body.rating !== null && req.body.rating !== ''
-    ? Number(req.body.rating)
-    : null;
+  product.rating =
+    req.body.rating !== undefined && req.body.rating !== null && req.body.rating !== ''
+      ? Number(req.body.rating)
+      : null;
   product.image = req.body.image?.trim() || 'https://via.placeholder.com/300';
 
   return res.json(product);
@@ -592,24 +593,23 @@ app.put('/api/products/:id', (req, res) => {
  *   delete:
  *     summary: Удалить товар
  *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: ID товара
  *     responses:
  *       204:
- *         description: Товар успешно удален
+ *         description: Товар удален
+ *       401:
+ *         description: Не авторизован
  *       404:
  *         description: Товар не найден
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  */
-app.delete('/api/products/:id', (req, res) => {
+app.delete('/api/products/:id', authMiddleware, (req, res) => {
   const index = products.findIndex((p) => p.id === req.params.id);
 
   if (index === -1) {
@@ -622,5 +622,5 @@ app.delete('/api/products/:id', (req, res) => {
 
 app.listen(port, () => {
   console.log(`Сервер запущен на http://localhost:${port}`);
-  console.log(`Документация Swagger доступна на http://localhost:${port}/api-docs`);
+  console.log(`Swagger: http://localhost:${port}/api-docs`);
 });

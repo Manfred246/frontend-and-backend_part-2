@@ -38,7 +38,10 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   if (!open) return null;
@@ -160,7 +163,7 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
             </label>
 
             <label className="label">
-              На складе (шт.)
+              На складе (шт.) *
               <input
                 type="number"
                 name="stock"
@@ -169,6 +172,7 @@ export default function ProductModal({ open, mode, initialProduct, onClose, onSu
                 onChange={handleChange}
                 min="0"
                 step="1"
+                required
               />
             </label>
           </div>
