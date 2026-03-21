@@ -4,21 +4,18 @@ import { api, tokenStorage } from '../api';
 
 export default function RegisterPage({ setCurrentUser }) {
   const [formData, setFormData] = useState({
+    email: '',
     first_name: '',
     last_name: '',
-    email: '',
-    password: ''
+    password: '',
+    role: 'user'
   });
 
   const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -84,6 +81,17 @@ export default function RegisterPage({ setCurrentUser }) {
           onChange={handleChange}
           required
         />
+
+        <select
+          className="input input--select"
+          name="role"
+          value={formData.role}
+          onChange={handleChange}
+        >
+          <option value="user">Пользователь</option>
+          <option value="seller">Продавец</option>
+          <option value="admin">Администратор</option>
+        </select>
 
         <button className="btn btn--primary" type="submit">
           Зарегистрироваться

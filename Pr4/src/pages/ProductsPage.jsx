@@ -7,18 +7,24 @@ export default function ProductsPage({ currentUser }) {
   const [products, setProducts] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
 
+  const canView = ['user', 'seller', 'admin'].includes(currentUser?.role);
+  const canCreateOrEdit = ['seller', 'admin'].includes(currentUser?.role);
+  const canDelete = currentUser?.role === 'admin';
+
   const loadProducts = async () => {
     try {
       const data = await api.getProducts();
       setProducts(data);
-    } catch {
-      alert('Ошибка загрузки товаров');
+    } catch (err) {
+      alert(err?.response?.data?.error || 'Ошибка загрузки товаров');
     }
   };
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    if (canView) {
+      loadProducts();
+    }
+  }, [canView]);
 
   const handleCreate = async (payload) => {
     try {
@@ -34,11 +40,9 @@ export default function ProductsPage({ currentUser }) {
 
     try {
       const updated = await api.updateProduct(editingProduct.id, payload);
-
       setProducts((prev) =>
         prev.map((p) => (p.id === editingProduct.id ? updated : p))
       );
-
       setEditingProduct(null);
     } catch (err) {
       alert(err?.response?.data?.error || 'Ошибка обновления');
@@ -54,11 +58,19 @@ export default function ProductsPage({ currentUser }) {
     }
   };
 
+  if (!currentUser) {
+    return <div>Для просмотра товаров войдите в систему.</div>;
+  }
+
+  if (!canView) {
+    return <div>Недостаточно прав для просмотра товаров.</div>;
+  }
+
   return (
     <div>
       <h1>Каталог товаров</h1>
 
-      {currentUser && (
+      {canCreateOrEdit && (
         <section className="section">
           <h2>{editingProduct ? 'Редактировать товар' : 'Создать товар'}</h2>
 
@@ -83,7 +95,8 @@ export default function ProductsPage({ currentUser }) {
             product={product}
             onEdit={setEditingProduct}
             onDelete={handleDelete}
-            canManage={Boolean(currentUser)}
+            canEdit={canCreateOrEdit}
+            canDelete={canDelete}
           />
         ))}
       </section>

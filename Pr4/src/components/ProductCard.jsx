@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-export default function ProductCard({ product, onEdit, onDelete, canManage }) {
+export default function ProductCard({ product, onEdit, onDelete, canEdit, canDelete }) {
   return (
     <div className="card">
       <img
@@ -25,15 +25,16 @@ export default function ProductCard({ product, onEdit, onDelete, canManage }) {
             Подробнее
           </Link>
 
-          {canManage && (
-            <>
-              <button className="btn" onClick={() => onEdit(product)}>
-                Изменить
-              </button>
-              <button className="btn btn--danger" onClick={() => onDelete(product.id)}>
-                Удалить
-              </button>
-            </>
+          {canEdit && (
+            <button className="btn" onClick={() => onEdit(product)}>
+              Изменить
+            </button>
+          )}
+
+          {canDelete && (
+            <button className="btn btn--danger" onClick={() => onDelete(product.id)}>
+              Удалить
+            </button>
           )}
         </div>
       </div>

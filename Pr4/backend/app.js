@@ -12,12 +12,27 @@ const port = 3000;
 const ACCESS_SECRET = 'access_secret';
 const REFRESH_SECRET = 'refresh_secret';
 
-const ACCESS_EXPIRES_IN = '15s'; // для демонстрации на защите
+const ACCESS_EXPIRES_IN = '15s';
 const REFRESH_EXPIRES_IN = '7d';
 const SALT_ROUNDS = 10;
 
-let users = [];
 let refreshTokens = new Set();
+
+const createSeedUser = async (email, first_name, last_name, password, role) => ({
+  id: nanoid(6),
+  email,
+  first_name,
+  last_name,
+  passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
+  role,
+  isBlocked: false
+});
+
+let users = await Promise.all([
+  createSeedUser('admin@techstore.local', 'Admin', 'System', 'admin123', 'admin'),
+  createSeedUser('seller@techstore.local', 'Seller', 'Store', 'seller123', 'seller'),
+  createSeedUser('user@techstore.local', 'Regular', 'User', 'user123', 'user')
+]);
 
 let products = [
   {
@@ -60,12 +75,14 @@ function sanitizeUser(user) {
     id: user.id,
     email: user.email,
     first_name: user.first_name,
-    last_name: user.last_name
+    last_name: user.last_name,
+    role: user.role,
+    isBlocked: user.isBlocked
   };
 }
 
 function findUserByEmail(email) {
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  return users.find((u) => u.email.toLowerCase() === String(email).toLowerCase());
 }
 
 function generateAccessToken(user) {
@@ -74,7 +91,8 @@ function generateAccessToken(user) {
       sub: user.id,
       email: user.email,
       first_name: user.first_name,
-      last_name: user.last_name
+      last_name: user.last_name,
+      role: user.role
     },
     ACCESS_SECRET,
     { expiresIn: ACCESS_EXPIRES_IN }
@@ -85,7 +103,8 @@ function generateRefreshToken(user) {
   return jwt.sign(
     {
       sub: user.id,
-      email: user.email
+      email: user.email,
+      role: user.role
     },
     REFRESH_SECRET,
     { expiresIn: REFRESH_EXPIRES_IN }
@@ -105,6 +124,13 @@ function authMiddleware(req, res, next) {
   try {
     const payload = jwt.verify(token, ACCESS_SECRET);
     req.user = payload;
+
+    const user = users.find((u) => u.id === payload.sub);
+
+    if (!user || user.isBlocked) {
+      return res.status(403).json({ error: 'User is blocked or not found' });
+    }
+
     next();
   } catch {
     return res.status(401).json({
@@ -113,20 +139,37 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function roleMiddleware(allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    next();
+  };
+}
+
 function validateRegisterBody(body) {
   const { email, first_name, last_name, password } = body;
 
   if (!email || !first_name || !last_name || !password) {
-    return 'Поля email, first_name, last_name, password обязательны';
+    return 'email, first_name, last_name, password are required';
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
-    return 'Некорректный email';
+    return 'Invalid email';
+  }
+
+  if (String(first_name).trim().length < 2) {
+    return 'first_name must contain at least 2 characters';
+  }
+
+  if (String(last_name).trim().length < 2) {
+    return 'last_name must contain at least 2 characters';
   }
 
   if (String(password).length < 6) {
-    return 'Пароль должен содержать минимум 6 символов';
+    return 'password must contain at least 6 characters';
   }
 
   return null;
@@ -163,19 +206,20 @@ const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'API интернет-магазина TechStore',
-      version: '4.0.0',
-      description: 'API с access и refresh токенами'
+      title: 'TechStore API with RBAC',
+      version: '6.0.0',
+      description: 'API с ролями user / seller / admin и авторизацией по email'
     },
     servers: [
       {
         url: 'http://localhost:3000',
-        description: 'Локальный сервер разработки'
+        description: 'Local server'
       }
     ],
     tags: [
-      { name: 'Auth', description: 'Аутентификация пользователей' },
-      { name: 'Products', description: 'Управление товарами' }
+      { name: 'Auth', description: 'Аутентификация' },
+      { name: 'Users', description: 'Пользователи' },
+      { name: 'Products', description: 'Товары' }
     ]
   },
   apis: ['./app.js']
@@ -184,116 +228,6 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true }));
 
-/**
- * @swagger
- * components:
- *   securitySchemes:
- *     bearerAuth:
- *       type: http
- *       scheme: bearer
- *       bearerFormat: JWT
- *     refreshHeader:
- *       type: apiKey
- *       in: header
- *       name: x-refresh-token
- *   schemas:
- *     UserRegisterRequest:
- *       type: object
- *       required:
- *         - email
- *         - first_name
- *         - last_name
- *         - password
- *       properties:
- *         email:
- *           type: string
- *           example: "ivan@example.com"
- *         first_name:
- *           type: string
- *           example: "Иван"
- *         last_name:
- *           type: string
- *           example: "Иванов"
- *         password:
- *           type: string
- *           example: "qwerty123"
- *     UserLoginRequest:
- *       type: object
- *       required:
- *         - email
- *         - password
- *       properties:
- *         email:
- *           type: string
- *           example: "ivan@example.com"
- *         password:
- *           type: string
- *           example: "qwerty123"
- *     UserResponse:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *         email:
- *           type: string
- *         first_name:
- *           type: string
- *         last_name:
- *           type: string
- *     LoginResponse:
- *       type: object
- *       properties:
- *         accessToken:
- *           type: string
- *         refreshToken:
- *           type: string
- *         user:
- *           $ref: '#/components/schemas/UserResponse'
- *     RefreshResponse:
- *       type: object
- *       properties:
- *         accessToken:
- *           type: string
- *         refreshToken:
- *           type: string
- *     Product:
- *       type: object
- *       required:
- *         - title
- *         - category
- *         - description
- *         - price
- *       properties:
- *         id:
- *           type: string
- *         title:
- *           type: string
- *         category:
- *           type: string
- *         description:
- *           type: string
- *         price:
- *           type: number
- *         stock:
- *           type: integer
- *         rating:
- *           type: number
- *         image:
- *           type: string
- *     Error:
- *       type: object
- *       properties:
- *         error:
- *           type: string
- */
-
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     summary: Регистрация пользователя
- *     tags: [Auth]
- */
 app.post('/api/auth/register', async (req, res) => {
   try {
     const validationError = validateRegisterBody(req.body);
@@ -301,14 +235,15 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: validationError });
     }
 
-    const { email, first_name, last_name, password } = req.body;
-    const existingUser = findUserByEmail(email);
+    const { email, first_name, last_name, password, role } = req.body;
+    const exists = users.some((u) => u.email.toLowerCase() === email.toLowerCase());
 
-    if (existingUser) {
-      return res.status(409).json({
-        error: 'Пользователь с таким email уже существует'
-      });
+    if (exists) {
+      return res.status(409).json({ error: 'email already exists' });
     }
+
+    const allowedRoles = ['user', 'seller', 'admin'];
+    const userRole = allowedRoles.includes(role) ? role : 'user';
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -317,49 +252,36 @@ app.post('/api/auth/register', async (req, res) => {
       email: email.trim(),
       first_name: first_name.trim(),
       last_name: last_name.trim(),
-      passwordHash
+      passwordHash,
+      role: userRole,
+      isBlocked: false
     };
 
     users.push(user);
 
     return res.status(201).json(sanitizeUser(user));
   } catch {
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: Вход в систему и получение пары токенов
- *     tags: [Auth]
- *     responses:
- *       200:
- *         description: Успешный вход
- */
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({
-        error: 'email and password are required'
-      });
+      return res.status(400).json({ error: 'email and password are required' });
     }
 
     const user = findUserByEmail(email);
-    if (!user) {
-      return res.status(401).json({
-        error: 'Invalid credentials'
-      });
+
+    if (!user || user.isBlocked) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
-      return res.status(401).json({
-        error: 'Invalid credentials'
-      });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const accessToken = generateAccessToken(user);
@@ -373,54 +295,27 @@ app.post('/api/auth/login', async (req, res) => {
       user: sanitizeUser(user)
     });
   } catch {
-    return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * @swagger
- * /api/auth/refresh:
- *   post:
- *     summary: Обновить пару токенов по refresh-токену из заголовка
- *     tags: [Auth]
- *     parameters:
- *       - in: header
- *         name: x-refresh-token
- *         required: true
- *         schema:
- *           type: string
- *         description: Refresh token
- *     responses:
- *       200:
- *         description: Новая пара токенов
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/RefreshResponse'
- */
 app.post('/api/auth/refresh', (req, res) => {
   const refreshToken = req.headers['x-refresh-token'];
 
   if (!refreshToken) {
-    return res.status(400).json({
-      error: 'refreshToken header is required'
-    });
+    return res.status(400).json({ error: 'refreshToken header is required' });
   }
 
   if (!refreshTokens.has(refreshToken)) {
-    return res.status(401).json({
-      error: 'Invalid refresh token'
-    });
+    return res.status(401).json({ error: 'Invalid refresh token' });
   }
 
   try {
     const payload = jwt.verify(refreshToken, REFRESH_SECRET);
     const user = users.find((u) => u.id === payload.sub);
 
-    if (!user) {
-      return res.status(401).json({
-        error: 'User not found'
-      });
+    if (!user || user.isBlocked) {
+      return res.status(401).json({ error: 'User not found or blocked' });
     }
 
     refreshTokens.delete(refreshToken);
@@ -435,19 +330,10 @@ app.post('/api/auth/refresh', (req, res) => {
       refreshToken: newRefreshToken
     });
   } catch {
-    return res.status(401).json({
-      error: 'Invalid or expired refresh token'
-    });
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
 });
 
-/**
- * @swagger
- * /api/auth/logout:
- *   post:
- *     summary: Выход из системы
- *     tags: [Auth]
- */
 app.post('/api/auth/logout', (req, res) => {
   const refreshToken = req.headers['x-refresh-token'];
 
@@ -458,16 +344,7 @@ app.post('/api/auth/logout', (req, res) => {
   return res.json({ logout: true });
 });
 
-/**
- * @swagger
- * /api/auth/me:
- *   get:
- *     summary: Получить текущего пользователя
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- */
-app.get('/api/auth/me', authMiddleware, (req, res) => {
+app.get('/api/auth/me', authMiddleware, roleMiddleware(['user', 'seller', 'admin']), (req, res) => {
   const user = users.find((u) => u.id === req.user.sub);
 
   if (!user) {
@@ -477,44 +354,89 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   return res.json(sanitizeUser(user));
 });
 
-/**
- * @swagger
- * /api/products:
- *   get:
- *     summary: Получить список товаров
- *     tags: [Products]
- */
-app.get('/api/products', (req, res) => {
-  res.json(products);
+app.get('/api/users', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+  return res.json(users.map(sanitizeUser));
 });
 
-/**
- * @swagger
- * /api/products/{id}:
- *   get:
- *     summary: Получить товар по ID
- *     tags: [Products]
- *     security:
- *       - bearerAuth: []
- */
-app.get('/api/products/:id', authMiddleware, (req, res) => {
-  const product = products.find((p) => p.id === req.params.id);
+app.get('/api/users/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+  const user = users.find((u) => u.id === req.params.id);
 
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
   }
 
-  return res.json(product);
+  return res.json(sanitizeUser(user));
 });
 
-/**
- * @swagger
- * /api/products:
- *   post:
- *     summary: Создать товар
- *     tags: [Products]
- */
-app.post('/api/products', (req, res) => {
+app.put('/api/users/:id', authMiddleware, roleMiddleware(['admin']), async (req, res) => {
+  const user = users.find((u) => u.id === req.params.id);
+
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const { email, first_name, last_name, role, isBlocked, password } = req.body;
+
+  if (email !== undefined) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ error: 'Invalid email' });
+    }
+
+    const duplicate = users.find((u) => u.id !== user.id && u.email.toLowerCase() === normalizedEmail);
+    if (duplicate) {
+      return res.status(409).json({ error: 'email already exists' });
+    }
+
+    user.email = normalizedEmail;
+  }
+
+  if (first_name !== undefined) {
+    if (!String(first_name).trim()) {
+      return res.status(400).json({ error: 'first_name cannot be empty' });
+    }
+    user.first_name = String(first_name).trim();
+  }
+
+  if (last_name !== undefined) {
+    if (!String(last_name).trim()) {
+      return res.status(400).json({ error: 'last_name cannot be empty' });
+    }
+    user.last_name = String(last_name).trim();
+  }
+
+  if (role !== undefined) {
+    if (!['user', 'seller', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    user.role = role;
+  }
+
+  if (isBlocked !== undefined) {
+    user.isBlocked = Boolean(isBlocked);
+  }
+
+  if (password !== undefined && String(password)) {
+    user.passwordHash = await bcrypt.hash(String(password), SALT_ROUNDS);
+  }
+
+  return res.json(sanitizeUser(user));
+});
+
+app.delete('/api/users/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+  const user = users.find((u) => u.id === req.params.id);
+
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  user.isBlocked = true;
+  return res.json({ blocked: true, user: sanitizeUser(user) });
+});
+
+app.post('/api/products', authMiddleware, roleMiddleware(['seller', 'admin']), (req, res) => {
   const validationError = validateProductBody(req.body);
   if (validationError) {
     return res.status(400).json({ error: validationError });
@@ -538,16 +460,21 @@ app.post('/api/products', (req, res) => {
   return res.status(201).json(newProduct);
 });
 
-/**
- * @swagger
- * /api/products/{id}:
- *   put:
- *     summary: Обновить товар
- *     tags: [Products]
- *     security:
- *       - bearerAuth: []
- */
-app.put('/api/products/:id', authMiddleware, (req, res) => {
+app.get('/api/products', authMiddleware, roleMiddleware(['user', 'seller', 'admin']), (req, res) => {
+  return res.json(products);
+});
+
+app.get('/api/products/:id', authMiddleware, roleMiddleware(['user', 'seller', 'admin']), (req, res) => {
+  const product = products.find((p) => p.id === req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+
+  return res.json(product);
+});
+
+app.put('/api/products/:id', authMiddleware, roleMiddleware(['seller', 'admin']), (req, res) => {
   const product = products.find((p) => p.id === req.params.id);
 
   if (!product) {
@@ -573,16 +500,7 @@ app.put('/api/products/:id', authMiddleware, (req, res) => {
   return res.json(product);
 });
 
-/**
- * @swagger
- * /api/products/{id}:
- *   delete:
- *     summary: Удалить товар
- *     tags: [Products]
- *     security:
- *       - bearerAuth: []
- */
-app.delete('/api/products/:id', authMiddleware, (req, res) => {
+app.delete('/api/products/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
   const index = products.findIndex((p) => p.id === req.params.id);
 
   if (index === -1) {

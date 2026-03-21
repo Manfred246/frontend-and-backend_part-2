@@ -23,11 +23,15 @@ export default function Layout({ currentUser, setCurrentUser }) {
           <Link to="/" className="brand">🛒 TechStore</Link>
 
           <nav className="nav">
-            <Link to="/" className="nav__link">Товары</Link>
+            {currentUser && <Link to="/" className="nav__link">Товары</Link>}
+            {currentUser?.role === 'admin' && (
+              <Link to="/users" className="nav__link">Пользователи</Link>
+            )}
+
             {currentUser ? (
               <>
                 <span className="nav__user">
-                  {currentUser.first_name} {currentUser.last_name}
+                  {currentUser.first_name} {currentUser.last_name} ({currentUser.role})
                 </span>
                 <button className="btn" onClick={handleLogout}>Выйти</button>
               </>

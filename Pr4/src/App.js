@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailsPage from './pages/ProductDetailsPage';
+import UsersPage from './pages/UsersPage';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -34,7 +35,14 @@ function App() {
           path="/"
           element={<Layout currentUser={currentUser} setCurrentUser={setCurrentUser} />}
         >
-          <Route index element={<ProductsPage currentUser={currentUser} />} />
+          <Route
+            index
+            element={
+              <ProtectedRoute>
+                <ProductsPage currentUser={currentUser} />
+              </ProtectedRoute>
+            }
+          />
           <Route path="login" element={<LoginPage setCurrentUser={setCurrentUser} />} />
           <Route path="register" element={<RegisterPage setCurrentUser={setCurrentUser} />} />
           <Route
@@ -42,6 +50,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProductDetailsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <ProtectedRoute>
+                <UsersPage currentUser={currentUser} />
               </ProtectedRoute>
             }
           />
