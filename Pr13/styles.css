@@ -1,0 +1,144 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f3f5f9;
+  color: #1d2433;
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: 32px;
+}
+
+.header p {
+  margin: 0 0 12px;
+  color: #556070;
+}
+
+.status {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e7ecf5;
+  font-size: 14px;
+}
+
+.status.offline {
+  background: #ffe3e3;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+  margin-bottom: 20px;
+}
+
+.todo-form {
+  display: flex;
+  gap: 12px;
+}
+
+.todo-form input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 1px solid #ccd4e0;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+button {
+  border: none;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 15px;
+  cursor: pointer;
+  background: #2b6cf6;
+  color: #fff;
+}
+
+button.secondary {
+  background: #67748a;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.list-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+}
+
+.todo-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.todo-text.done {
+  text-decoration: line-through;
+  color: #778296;
+}
+
+.icon-button {
+  background: #f04f4f;
+  padding: 10px 14px;
+}
+
+.empty-state {
+  margin: 12px 0 0;
+  color: #6e7b91;
+}
+
+@media (max-width: 640px) {
+  .todo-form,
+  .list-header,
+  .todo-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .todo-main {
+    align-items: flex-start;
+  }
+}
