@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Список дел — PWA-приложение</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Список дел" />
+  <meta name="theme-color" content="#2563eb" />
+
+  <link rel="icon" href="./icons/favicon.ico" sizes="16x16 32x32 48x48" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="./icons/icon-152x152.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <h1>Список дел</h1>
+      <p>Теперь приложение можно установить как PWA и открывать в отдельном окне.</p>
+      <span id="network-status" class="status">Проверка сети...</span>
+    </header>
+
+    <section class="card">
+      <form id="todo-form" class="todo-form">
+        <input
+          id="todo-input"
+          type="text"
+          placeholder="Введите новую задачу"
+          maxlength="120"
+          required
+        />
+        <button type="submit">Добавить</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="list-header">
+        <h2>Мои задачи</h2>
+        <button id="clear-completed" class="secondary" type="button">Удалить выполненные</button>
+      </div>
+      <ul id="todo-list" class="todo-list"></ul>
+      <p id="empty-state" class="empty-state">Пока задач нет.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
