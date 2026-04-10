@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#4285f4">
+  <link rel="apple-touch-icon" href="/icons/icon-152x152.png">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Заметки</title>
+  <link rel="icon" href="/icons/favicon.ico" sizes="16x16" type="image/x-icon">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    header {
+      background: white;
+      border-bottom: 1px solid #dbe4f0;
+      padding: 24px 16px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 {
+      margin: 0 0 16px;
+      text-align: center;
+      font-size: 32px;
+    }
+    .tabs {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .tab, .button {
+      border: none;
+      border-radius: 10px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .tab {
+      background: #e8eef9;
+      flex: 1;
+    }
+    .tab.active {
+      background: #4285f4;
+      color: white;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    input {
+      padding: 12px;
+      border: 1px solid #c7d2e4;
+      border-radius: 10px;
+      font-size: 15px;
+      min-width: 0;
+    }
+    #note-input { flex: 1 1 320px; }
+    #reminder-text { flex: 1 1 260px; }
+    #reminder-time { flex: 0 1 240px; }
+    .button {
+      background: #4285f4;
+      color: white;
+      min-width: 170px;
+    }
+    .button.success { background: #0f9d58; }
+    .button.error { background: #db4437; }
+    .button.secondary { background: #5f6368; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      border: 1px solid #dbe4f0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .note-text {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .note-meta {
+      margin-top: 6px;
+      font-size: 13px;
+      color: #52607a;
+    }
+    .footer-controls {
+      text-align: center;
+      margin-top: 8px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .status {
+      text-align: center;
+      font-size: 14px;
+      color: #52607a;
+      margin-top: 10px;
+    }
+    .realtime-toast {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: #4285f4;
+      color: white;
+      padding: 14px 16px;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      z-index: 1000;
+      max-width: 320px;
+    }
+    @media (max-width: 700px) {
+      h1 { font-size: 26px; }
+      .row { flex-direction: column; }
+      input, .button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>  
+    <nav class="tabs">
+      <button id="home-btn" class="tab active">Главная</button>
+      <button id="about-btn" class="tab">О приложении</button>
+    </nav>
+  </header>
+
+  <main id="app-content" class="container"></main>
+
+  <footer class="footer-controls">
+    <button id="enable-push" class="button success">Включить уведомления</button>
+    <button id="disable-push" class="button error" style="display:none;">Отключить уведомления</button>
+  </footer>
+  <div id="app-status" class="status"></div>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
